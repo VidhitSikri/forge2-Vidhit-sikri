@@ -28,16 +28,19 @@ def slack_api_call(method, payload=None):
     if payload:
         data = json.dumps(payload).encode('utf-8')
         
-    req = urllib.request.Request(url, data=data, headers=headers, method="POST" if payload else "GET")
-    try:
-        with urllib.request.urlopen(req) as response:
-            res_data = json.loads(response.read().decode('utf-8'))
-            if not res_data.get("ok"):
-                print(f"Slack API error for {method}: {res_data}")
-            return res_data
-    except Exception as e:
-        print(f"HTTP request to Slack failed: {e}")
-        return {"ok": False}
+    for attempt in range(3):
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST" if payload else "GET")
+        try:
+            with urllib.request.urlopen(req, timeout=15) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                if not res_data.get("ok"):
+                    print(f"Slack API error for {method}: {res_data}")
+                return res_data
+        except Exception as e:
+            print(f"Slack API attempt {attempt+1} failed: {e}")
+            if attempt < 2:
+                time.sleep(2)
+    return {"ok": False}
 
 def github_api_call(path, payload=None, method="GET"):
     url = f"https://api.github.com{path}"
@@ -52,13 +55,16 @@ def github_api_call(path, payload=None, method="GET"):
         data = json.dumps(payload).encode('utf-8')
         headers["Content-Type"] = "application/json"
         
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req) as response:
-            return json.loads(response.read().decode('utf-8'))
-    except Exception as e:
-        print(f"HTTP request to GitHub failed: {e}")
-        return None
+    for attempt in range(3):
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as response:
+                return json.loads(response.read().decode('utf-8'))
+        except Exception as e:
+            print(f"GitHub API attempt {attempt+1} failed: {e}")
+            if attempt < 2:
+                time.sleep(2)
+    return None
 
 def ask_llm(system_prompt, user_prompt):
     url = f"{EASTROUTER_BASE_URL}/chat/completions"

@@ -53,16 +53,19 @@ def slack_api_call(method, payload=None):
     if payload:
         data = json.dumps(payload).encode('utf-8')
         
-    req = urllib.request.Request(url, data=data, headers=headers, method="POST" if payload else "GET")
-    try:
-        with urllib.request.urlopen(req) as response:
-            res_data = json.loads(response.read().decode('utf-8'))
-            if not res_data.get("ok"):
-                print(f"Slack API error for {method}: {res_data}")
-            return res_data
-    except Exception as e:
-        print(f"HTTP request to Slack failed: {e}")
-        return {"ok": False}
+    for attempt in range(3):
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST" if payload else "GET")
+        try:
+            with urllib.request.urlopen(req, timeout=15) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                if not res_data.get("ok"):
+                    print(f"Slack API error for {method}: {res_data}")
+                return res_data
+        except Exception as e:
+            print(f"Slack API attempt {attempt+1} failed: {e}")
+            if attempt < 2:
+                time.sleep(2)
+    return {"ok": False}
 
 def github_api_call(path, payload=None, method="GET"):
     url = f"https://api.github.com{path}"
@@ -77,13 +80,16 @@ def github_api_call(path, payload=None, method="GET"):
         data = json.dumps(payload).encode('utf-8')
         headers["Content-Type"] = "application/json"
         
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req) as response:
-            return json.loads(response.read().decode('utf-8'))
-    except Exception as e:
-        print(f"HTTP request to GitHub failed: {e}")
-        return None
+    for attempt in range(3):
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=15) as response:
+                return json.loads(response.read().decode('utf-8'))
+        except Exception as e:
+            print(f"GitHub API attempt {attempt+1} failed: {e}")
+            if attempt < 2:
+                time.sleep(2)
+    return None
 
 def ask_llm(system_prompt, user_prompt):
     url = f"{EASTROUTER_BASE_URL}/chat/completions"
@@ -192,30 +198,51 @@ def execute_task(task_description, sprint_num, task_idx):
         "You are OpenClaw, an expert developer agent. Your task is to implement the requested programming changes "
         "within the workspace.\n"
         "Analyze the project structure (containing backend/ Laravel app and frontend/ React app).\n"
-        "Return the changes as a valid JSON array of file operations. Each file operation must be an object:\n"
+        "You can write files or run shell/terminal commands. You must output file paths that write directly into 'backend/' or 'frontend/' subdirectories (e.g. 'backend/app/Models/User.php'). Do NOT write to temporary or backup folders.\n"
+        "Return the changes as a valid JSON array of operations. Each operation must be an object:\n"
         "{\n"
-        "  \"action\": \"create\" | \"modify\" | \"delete\",\n"
-        "  \"path\": \"relative/path/to/file\",\n"
-        "  \"content\": \"...full new content or empty for delete...\"\n"
+        "  \"action\": \"create\" | \"modify\" | \"delete\" | \"run_command\",\n"
+        "  \"path\": \"relative/path/to/file (omit if action is run_command)\",\n"
+        "  \"content\": \"...file content... (omit if action is run_command)\",\n"
+        "  \"command\": \"...shell command... (only if action is run_command)\"\n"
         "}\n"
         "Provide ONLY the JSON response. Do not include explanations, code blocks, or markdown formatting."
     )
     user_prompt = f"Implement changes for Task: {task_description}"
     
     llm_response = ask_llm(system_prompt, user_prompt)
-    if "```json" in llm_response:
-        llm_response = llm_response.split("```json")[1].split("```")[0].strip()
-    elif "```" in llm_response:
-        llm_response = llm_response.split("```")[1].split("```")[0].strip()
+    
+    # Extract JSON content
+    clean_json = llm_response.strip()
+    if "```json" in clean_json:
+        clean_json = clean_json.split("```json")[1].split("```")[0].strip()
+    elif "```" in clean_json:
+        clean_json = clean_json.split("```")[1].split("```")[0].strip()
         
     try:
-        operations = json.loads(llm_response.strip())
+        operations = json.loads(clean_json)
         applied_ops = []
         for op in operations:
             action = op.get("action")
+            
+            if action == "run_command":
+                cmd = op.get("command")
+                print(f"Running task command: {cmd}")
+                res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                applied_ops.append(f"Ran command '{cmd}' (exit code: {res.returncode})")
+                if res.stdout:
+                    applied_ops.append(f"Stdout:\n{res.stdout.strip()}")
+                if res.stderr:
+                    applied_ops.append(f"Stderr:\n{res.stderr.strip()}")
+                continue
+                
             path = op.get("path")
             content = op.get("content", "")
             
+            # Prevent writing outside the workspace
+            if not path or ".." in path or path.startswith("/") or path.startswith("\\"):
+                continue
+                
             # Ensure parent directories exist
             dir_name = os.path.dirname(path)
             if dir_name and not os.path.exists(dir_name):
@@ -330,8 +357,8 @@ def main():
                         subprocess.run(["git", "config", "user.name", "OpenClaw Agent"], check=True)
                         subprocess.run(["git", "config", "user.email", "openclaw@agent.local"], check=True)
                         
-                        # Create feature branch
-                        subprocess.run(["git", "checkout", "-b", branch_name], check=True)
+                        # Create feature branch (using -B to overwrite/reset if it already exists)
+                        subprocess.run(["git", "checkout", "-B", branch_name], check=True)
                         subprocess.run(["git", "add", "."], check=True)
                         subprocess.run(["git", "commit", "-m", f"Sprint {state['current_sprint']} Task {task_idx+1}: {current_task['description']}"], check=True)
                         
