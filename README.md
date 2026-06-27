@@ -1,14 +1,14 @@
-# PulseDesk -- Forge 2 / Edition 1  (rename this repo: forge2-<yourname>)
+# PulseDesk -- Forge 2 / Edition 1
 
-A multi-tenant support-desk SaaS, BUILT BY ORCHESTRATING Hermes + OpenClaw over Slack.
-This is a STARTER SKELETON -- structure only, zero features. Build the features with your agents.
+A multi-tenant customer support ticketing SaaS, BUILT BY ORCHESTRATING Hermes + OpenClaw over Slack.
+Companies can create/manage support tickets, assign agents, reply to customers, and track ticket status—while each company can only access its own data.
 
 ## Stack (required)
 Laravel 11 . PHP 8.2 . MySQL 8 . Laravel Sanctum . React 19 . Vite . Tailwind
 
 ## EastRouter models I used
-- Hermes (planning / product owner): <e.g. deepseek/deepseek-v4-pro>
-- OpenClaw (coding): <e.g. z-ai/glm-5.1>
+- Hermes (planning / product owner): anthropic/claude-sonnet-4.5
+- OpenClaw (coding): anthropic/claude-sonnet-4.5
 
 ## How to run  (EXACT -- a judge will run these from a fresh clone)
 ### Backend (Laravel + MySQL)
@@ -24,10 +24,12 @@ Laravel 11 . PHP 8.2 . MySQL 8 . Laravel Sanctum . React 19 . Vite . Tailwind
     npm install
     npm run dev                   # http://127.0.0.1:5173
 
-## Demo logins (from the seeder)  -- fill in after you build the seeder
-- admin@acme.test / password
-- agent@acme.test / password
-- customer@acme.test / password
+## Demo logins (from the seeder)
+- admin@acme.test / password (Admin - Acme Corp)
+- agent@acme.test / password (Agent - Acme Corp)
+- customer@acme.test / password (Customer - Acme Corp)
+- admin@techco.test / password (Admin - TechCo Inc)
+- support@techco.test / password (Agent - TechCo Inc)
 
 ## Live URL
 <paste if deployed, else: "runs locally per the steps above">
